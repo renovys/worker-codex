@@ -1,19 +1,19 @@
-# codex-run
+# worker-codex
 
-[![test](https://github.com/renovys/codex-run/actions/workflows/test.yml/badge.svg)](https://github.com/renovys/codex-run/actions/workflows/test.yml)
+[![test](https://github.com/renovys/worker-codex/actions/workflows/test.yml/badge.svg)](https://github.com/renovys/worker-codex/actions/workflows/test.yml)
 
 A watchdog wrapper for the [OpenAI Codex CLI](https://github.com/openai/codex) that keeps `codex exec` from hanging forever in unattended automation.
 
-`codex exec` is great in a terminal, where a human notices when it stops responding. In cron jobs, CI steps, and headless agent pipelines there is nobody watching - a stuck run just sits there holding a process slot until someone finds it hours later. `codex-run` puts a time limit on the run, kills the whole process tree when it trips, and reports *why* it stopped through a standard exit code so the calling script can decide what to do next.
+`codex exec` is great in a terminal, where a human notices when it stops responding. In cron jobs, CI steps, and headless agent pipelines there is nobody watching - a stuck run just sits there holding a process slot until someone finds it hours later. `worker-codex` puts a time limit on the run, kills the whole process tree when it trips, and reports *why* it stopped through a standard exit code so the calling script can decide what to do next.
 
 ```bash
-codex-run --timeout 900 exec --sandbox workspace-write "refactor the parser"
+worker-codex --timeout 900 exec --sandbox workspace-write "refactor the parser"
 echo $?   # 0 = finished, 124 = hit the time limit, 125 = went silent
 ```
 
 ## What it actually does
 
-**Closes stdin by default.** This is the single most common cause of a hung `codex exec`. If stdin stays open, Codex can sit waiting for input that will never arrive. `codex-run` redirects stdin from an empty file unless you explicitly pass `--stdin <file>`.
+**Closes stdin by default.** This is the single most common cause of a hung `codex exec`. If stdin stays open, Codex can sit waiting for input that will never arrive. `worker-codex` redirects stdin from an empty file unless you explicitly pass `--stdin <file>`.
 
 **Enforces a wall-clock limit** (`--timeout`, default 900s). When the limit trips, the process is terminated - and so are its children and grandchildren. Codex spawns subprocesses; killing only the parent leaves orphans behind. The bash version uses process-group signalling (`kill -TERM -PGID`) plus a `pkill -P` sweep; the PowerShell version uses `taskkill /T /F`.
 
@@ -32,7 +32,7 @@ echo $?   # 0 = finished, 124 = hit the time limit, 125 = went silent
 It also prints a language-neutral status line that automation can parse without reading the human-facing summary:
 
 ```
-codex-run: status=timeout exit_code=124 elapsed_sec=15 log=/home/you/.codex-runs/20260724-233844-2986093.log
+worker-codex: status=timeout exit_code=124 elapsed_sec=15 log=/home/you/.codex-runs/20260724-233844-2986093.log
 ```
 
 **Writes a standard log** to `~/.codex-runs/<timestamp>-<pid>.log` and prints the path in its summary, so a failed run leaves a breadcrumb you can pick up later. The directory is created `0700` and logs `0600`, because the command line - which may carry your prompt - is recorded in the header. Logs older than 14 days are pruned automatically.
@@ -47,12 +47,12 @@ For the simple case, `timeout` really is enough, and you should use it:
 timeout -k 10 900 codex exec "..." < /dev/null
 ```
 
-That covers the wall-clock limit and closing stdin. `codex-run` exists for the parts it does not cover:
+That covers the wall-clock limit and closing stdin. `worker-codex` exists for the parts it does not cover:
 
-- **`timeout` signals one process, not the tree.** Codex spawns subprocesses, and this is a [known, still-open problem in Codex itself](https://github.com/openai/codex/issues/4337) - when a run is killed, orphaned children keep the stdout/stderr pipes open, which is exactly what makes an "already terminated" job keep hanging. `codex-run` signals the whole process group and escalates to `SIGKILL` for children that ignore `SIGTERM`.
+- **`timeout` signals one process, not the tree.** Codex spawns subprocesses, and this is a [known, still-open problem in Codex itself](https://github.com/openai/codex/issues/4337) - when a run is killed, orphaned children keep the stdout/stderr pipes open, which is exactly what makes an "already terminated" job keep hanging. `worker-codex` signals the whole process group and escalates to `SIGKILL` for children that ignore `SIGTERM`.
 - **`timeout` cannot see a stalled-but-alive process.** A Codex run that stops making progress while still holding its process is not distinguishable from a slow one by wall clock alone. `--stall` watches output instead - off by default, for reasons explained below.
 - **`timeout` returns `124` for everything.** There is no way for the caller to tell "hit the limit" from "went silent", which matters when you want to retry one and escalate the other.
-- **No breadcrumbs.** When a cron job fails at 4am, `timeout` leaves nothing behind. `codex-run` writes a log with the exact command and prints its path.
+- **No breadcrumbs.** When a cron job fails at 4am, `timeout` leaves nothing behind. `worker-codex` writes a log with the exact command and prints its path.
 
 If none of that matters to you, `timeout` is the smaller dependency and the right answer.
 
@@ -63,25 +63,25 @@ There is nothing to build. Drop the script somewhere on your `PATH` and make it 
 **Linux / macOS**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/renovys/codex-run/main/codex-run -o ~/.local/bin/codex-run
-chmod +x ~/.local/bin/codex-run
+curl -fsSL https://raw.githubusercontent.com/renovys/worker-codex/main/worker-codex -o ~/.local/bin/worker-codex
+chmod +x ~/.local/bin/worker-codex
 ```
 
 **Windows (PowerShell 5.1)**
 
 ```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/renovys/codex-run/main/codex-run.ps1 `
-  -OutFile "$HOME\.claude\codex-run.ps1"
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/renovys/worker-codex/main/worker-codex.ps1 `
+  -OutFile "$HOME\.claude\worker-codex.ps1"
 ```
 
 Requires `codex` on your `PATH` (or point at it with `--codex-bin`). The bash version targets bash 3.2, so it runs on stock macOS without installing a newer bash.
 
-The bash version's default automatic account routing remains a single-file install. It first tries the optional `gpt_quota.py` and `quota_balance.py` helper modules when they are available on the Python import path; otherwise, it uses the minimal implementations embedded in `codex-run`. The helpers are not required for a clean install. Automatic routing needs at least one GPT quota snapshot from a Codex CLI run in `~/.codex/sessions/**/*.jsonl`, `~/.model-usage/gpt-*.json`, `~/.codex-biz/sessions/**/*.jsonl`, or `~/.model-usage/gptbiz-*.json`. If no snapshot exists, it exits `2` with the files checked and the action needed to create one.
+The bash version's default automatic account routing remains a single-file install. It first tries the optional `gpt_quota.py` and `quota_balance.py` helper modules when they are available on the Python import path; otherwise, it uses the minimal implementations embedded in `worker-codex`. The helpers are not required for a clean install. Automatic routing needs at least one GPT quota snapshot from a Codex CLI run in `~/.codex/sessions/**/*.jsonl`, `~/.model-usage/gpt-*.json`, `~/.codex-biz/sessions/**/*.jsonl`, or `~/.model-usage/gptbiz-*.json`. If no snapshot exists, it exits `2` with the files checked and the action needed to create one.
 
 ## Usage
 
 ```
-codex-run [--timeout SEC] [--stall SEC] [--stdin FILE] [--tail N] [--codex-bin PATH]
+worker-codex [--timeout SEC] [--stall SEC] [--stdin FILE] [--tail N] [--codex-bin PATH]
           [--help] [--version] [--] <codex args...>
 ```
 
@@ -101,7 +101,7 @@ Defaults can also come from the environment - `CODEX_RUN_TIMEOUT`, `CODEX_RUN_ST
 On Windows the flags are identical, so the same call shape works on all three platforms:
 
 ```powershell
-powershell -NoProfile -File $HOME\.claude\codex-run.ps1 --timeout 900 exec --sandbox workspace-write "your prompt"
+powershell -NoProfile -File $HOME\.claude\worker-codex.ps1 --timeout 900 exec --sandbox workspace-write "your prompt"
 ```
 
 ### Passing a long prompt
@@ -109,7 +109,7 @@ powershell -NoProfile -File $HOME\.claude\codex-run.ps1 --timeout 900 exec --san
 Prompts with quotes, newlines, or shell metacharacters are much safer in a file than on the command line:
 
 ```bash
-codex-run --timeout 1200 --stall 0 --stdin ./prompt.md \
+worker-codex --timeout 1200 --stall 0 --stdin ./prompt.md \
   exec --model gpt-5.6-sol --output-last-message ./answer.md
 ```
 
@@ -118,7 +118,7 @@ Note the pairing with `--output-last-message`: Codex's stdout is a long reasonin
 ### Reacting to the outcome
 
 ```bash
-codex-run --timeout 600 exec "$PROMPT"
+worker-codex --timeout 600 exec "$PROMPT"
 case $? in
   0)   echo "done" ;;
   124) echo "timed out - resuming manually" ;;
@@ -143,13 +143,13 @@ Turning it on for a quiet-by-design call will kill healthy runs.
 Every run appends to `~/.codex-runs/<timestamp>-<pid>.log`, starting with a header that records the limits and the exact command line. The summary block printed at the end tells you what happened, how long it took, and where the full log is:
 
 ```
------ codex-run summary -----
+----- worker-codex summary -----
 status: wall-clock limit of 900s exceeded - terminated; caller should take over
 decision at: 900s / total elapsed: 905s / full log: /home/you/.codex-runs/20260724-213035-2542577.log
-codex-run: status=timeout exit_code=124 elapsed_sec=905 log=/home/you/.codex-runs/20260724-213035-2542577.log
+worker-codex: status=timeout exit_code=124 elapsed_sec=905 log=/home/you/.codex-runs/20260724-213035-2542577.log
 ```
 
-The fields report the stop reason, when the decision was made, total elapsed time including the kill grace period, and the full log path; parse the final `codex-run: status=...` line in automation.
+The fields report the stop reason, when the decision was made, total elapsed time including the kill grace period, and the full log path; parse the final `worker-codex: status=...` line in automation.
 
 If a process somehow survives the kill, the summary says so explicitly rather than reporting a clean stop.
 

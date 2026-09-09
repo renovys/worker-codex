@@ -20,7 +20,7 @@ jobs:
         run: bash --version | head -1
 
       - name: Check syntax
-        run: bash -n codex-run && bash -n test/run-tests.sh
+        run: bash -n worker-codex && bash -n test/run-tests.sh
 
       # The macOS runner's default /bin/bash is 3.2, so this catches portability regressions.
       - name: Run scenarios
@@ -37,7 +37,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           $errors = $null
           [System.Management.Automation.PSParser]::Tokenize(
-            (Get-Content -Raw codex-run.ps1), [ref]$errors) | Out-Null
+            (Get-Content -Raw worker-codex.ps1), [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Host $_.Message }; exit 1 }
           Write-Host "Syntax OK"
 

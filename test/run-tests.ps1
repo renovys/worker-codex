@@ -1,5 +1,5 @@
-﻿# Self-test harness for codex-run.ps1, using fake codex binaries to reproduce each scenario.
-# Usage: .\test\run-tests.ps1 [path to codex-run.ps1]   (default: .\codex-run.ps1 at the repository root)
+﻿# Self-test harness for worker-codex.ps1, using fake codex binaries to reproduce each scenario.
+# Usage: .\test\run-tests.ps1 [path to worker-codex.ps1]   (default: .\worker-codex.ps1 at the repository root)
 # Exit codes: 0=all passed / 1=one or more failures
 # The real codex is never called, so this consumes no API quota or credits.
 param([string]$Wrapper)
@@ -10,10 +10,10 @@ param([string]$Wrapper)
 $ErrorActionPreference = "Continue"
 
 if (-not $Wrapper) {
-  $Wrapper = Join-Path (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)) "codex-run.ps1"
+  $Wrapper = Join-Path (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)) "worker-codex.ps1"
 }
 $Wrapper = (Resolve-Path -LiteralPath $Wrapper).Path
-if (-not (Test-Path -LiteralPath $Wrapper)) { Write-Host "codex-run.ps1 not found: $Wrapper"; exit 2 }
+if (-not (Test-Path -LiteralPath $Wrapper)) { Write-Host "worker-codex.ps1 not found: $Wrapper"; exit 2 }
 
 $td = Join-Path ([IO.Path]::GetTempPath()) ("codexrun-test-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
 New-Item -ItemType Directory -Path $td -Force | Out-Null
@@ -33,7 +33,7 @@ Set-Content "$td\ok.cmd"   -Value "@echo off`r`necho progress`r`nexit /b 0"     
 Set-Content "$td\rc7.cmd"  -Value "@echo off`r`necho failed`r`nexit /b 7"                  -Encoding OEM
 Set-Content "$td\hang.cmd" -Value "@echo off`r`necho start`r`nping -n 300 127.0.0.1 > nul" -Encoding OEM
 
-Write-Host "codex-run tests: $Wrapper"
+Write-Host "worker-codex tests: $Wrapper"
 Write-Host "PowerShell: $($PSVersionTable.PSVersion)"
 
 # --- Basic behavior ---

@@ -1,12 +1,12 @@
-﻿# codex-run.ps1 - watchdog wrapper for delegated GPT-5.6 Sol (codex) runs
+﻿# worker-codex.ps1 - watchdog wrapper for delegated GPT-5.6 Sol (codex) runs
 # It detects unresponsive runs through a wall-clock limit or output silence, kills the process tree,
 # and records the log path and termination reason in a standard format so the calling agent can take over.
-# Usage: codex-run [--timeout SEC] [--stall SEC] [--stdin FILE] [--tail N] [--codex-bin PATH]
+# Usage: worker-codex [--timeout SEC] [--stall SEC] [--stdin FILE] [--tail N] [--codex-bin PATH]
 #                  [--help] [--version] [--] <codex args...>
 # Exit codes: 0=success / 124=wall-clock limit / 125=output stall / 2=usage or argument error / other=codex exit code
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$AllArgs)
 # Do not use CmdletBinding because common parameters such as -OutVariable conflict with codex's -o.
-# Parse flags directly under the same names as the bash version of codex-run.
+# Parse flags directly under the same names as the bash version of worker-codex.
 
 $ErrorActionPreference = "Stop"
 $Version = "0.1.0"
@@ -14,7 +14,7 @@ $Version = "0.1.0"
 function Show-Usage {
 @'
 Usage:
-  codex-run [--timeout SEC] [--stall SEC] [--stdin FILE] [--tail N] [--codex-bin PATH]
+  worker-codex [--timeout SEC] [--stall SEC] [--stdin FILE] [--tail N] [--codex-bin PATH]
             [--help] [--version] [--] <codex args...>
 
 Options:
@@ -35,7 +35,7 @@ Environment:
 }
 
 function Fail-Argument([string]$Message) {
-  [Console]::Error.WriteLine("codex-run: $Message")
+  [Console]::Error.WriteLine("worker-codex: $Message")
   exit 2
 }
 
@@ -64,9 +64,9 @@ function Require-NextValue([string]$Name, [int]$Index, [int]$Count) {
 }
 
 function Write-LiftNotice([string]$Name, [bool]$SeenBefore) {
-  [Console]::Error.WriteLine("[codex-run] notice: '$Name' is a wrapper flag and belongs before 'exec'; its position was auto-corrected.")
+  [Console]::Error.WriteLine("[worker-codex] notice: '$Name' is a wrapper flag and belongs before 'exec'; its position was auto-corrected.")
   if ($SeenBefore) {
-    [Console]::Error.WriteLine("[codex-run] notice: '$Name' was given both before and after 'exec'; the later value wins.")
+    [Console]::Error.WriteLine("[worker-codex] notice: '$Name' was given both before and after 'exec'; the later value wins.")
   }
 }
 
@@ -283,7 +283,7 @@ while ($i -lt $AllArgs.Count) {
       exit 0
     }
     "--version" {
-      Write-Output "codex-run $Version"
+      Write-Output "worker-codex $Version"
       exit 0
     }
     "--" {
@@ -428,7 +428,7 @@ if (-not $stallFromCli) { $StallSec = Convert-ValidatedNumber "--stall/CODEX_RUN
 if (-not $tailFromCli) { $TailLines = Convert-ValidatedNumber "--tail/CODEX_RUN_TAIL" $tailRaw 0 }
 
 if (-not $CodexArgs -or $CodexArgs.Count -eq 0) {
-  Fail-Argument "no arguments. See codex-run --help"
+  Fail-Argument "no arguments. See worker-codex --help"
 }
 
 if ($null -ne $StdinFile -and
@@ -487,7 +487,7 @@ try {
   }
 
   Set-Content -LiteralPath $outLog -Encoding UTF8 -Value @(
-    "# codex-run start: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') / timeout $($TimeoutSec)s / stall $($StallSec)s / stdin $nullIn",
+    "# worker-codex start: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') / timeout $($TimeoutSec)s / stall $($StallSec)s / stdin $nullIn",
     "# command: $CodexBin $($quoted -join ' ')",
     "#---"
   )
@@ -571,14 +571,14 @@ try {
 }
 
 if ($null -ne $runError) {
-  [Console]::Error.WriteLine("codex-run: execution error: $runError")
+  [Console]::Error.WriteLine("worker-codex: execution error: $runError")
   exit 1
 }
 
 Write-Host "----- codex output (last $TailLines lines) -----"
 Get-Content -LiteralPath $outLog -Encoding UTF8 -Tail $TailLines -ErrorAction SilentlyContinue |
   ForEach-Object { Write-Host $_ }
-Write-Host "----- codex-run summary -----"
+Write-Host "----- worker-codex summary -----"
 switch ($reason) {
   "ok"      { Write-Host "status: exited normally (codex exit code $rc)" }
   "timeout" { Write-Host "status: wall-clock limit of $($TimeoutSec)s exceeded - terminated; caller should take over" }
@@ -588,5 +588,5 @@ if ($leftIds.Count -gt 0) {
   Write-Host "warning: codex process still running (PID $($leftIds -join ',')) - inspect it before delegating again"
 }
 Write-Host "decision at: $($decisionElapsed)s / total elapsed: $($totalElapsed)s / full log: $outLog"
-Write-Host "codex-run: status=$reason exit_code=$rc elapsed_sec=$totalElapsed log=$outLog"
+Write-Host "worker-codex: status=$reason exit_code=$rc elapsed_sec=$totalElapsed log=$outLog"
 exit $rc

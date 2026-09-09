@@ -27,14 +27,14 @@ layout, installed packages, code style. It only dilutes the principles above.
 
 # Project rules
 
-- **This is a public MIT project** (github.com/renovys/codex-run). The second
+- **This is a public MIT project** (github.com/renovys/worker-codex). The second
   principle above (delete instead of keeping compatibility layers) **does not apply
   to the CLI interface.** Flag names, default values, and exit codes are a contract
   that users wrap in their own scripts. When something has to change, add a new flag
   and keep the old one for a while; removal is a separate change and belongs in the
   changelog. Internal implementation and helper functions follow the principle as
   written.
-- Verify before finishing: `bash -n codex-run` (shell syntax), `--help` exits 0, an
+- Verify before finishing: `bash -n worker-codex` (shell syntax), `--help` exits 0, an
   unknown option exits 2.
 - Never put development absolute paths, internal IP addresses, or account names into
   code or examples. This repository is public.

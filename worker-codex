@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# codex-run - watchdog wrapper for delegated GPT-5.6 Sol (codex) runs
+# worker-codex - watchdog wrapper for delegated GPT-5.6 Sol (codex) runs
 # It detects unresponsive runs through a wall-clock limit or output silence, kills the process tree,
 # and records the log path and termination reason in a standard format so the calling agent can take over.
-# Usage: codex-run [--timeout SEC] [--stall SEC] [--stdin FILE] [--tail N] [--codex-bin PATH]
+# Usage: worker-codex [--timeout SEC] [--stall SEC] [--stdin FILE] [--tail N] [--codex-bin PATH]
 #                  [--account personal|biz|auto]
 #                  [--help] [--version] [--] <codex args...>
-#   Example: codex-run --timeout 900 exec --sandbox danger-full-access "prompt"
+#   Example: worker-codex --timeout 900 exec --sandbox danger-full-access "prompt"
 # Exit codes: 0=success / 124=wall-clock limit / 125=output stall / 3=wrapper log/setup failure (no child started) / 2=usage or argument error / other=codex exit code
 # Compatible with macOS bash 3.2 (no associative arrays or flock).
 set -u
@@ -15,7 +15,7 @@ VERSION="0.2.0"
 usage() {
   cat <<'EOF'
 Usage:
-  codex-run [--timeout SEC] [--stall SEC] [--stdin FILE] [--tail N] [--codex-bin PATH]
+  worker-codex [--timeout SEC] [--stall SEC] [--stdin FILE] [--tail N] [--codex-bin PATH]
             [--account personal|biz|auto]
             [--help] [--version] [--] <codex args...>
 
@@ -49,14 +49,14 @@ Environment:
 EOF
 }
 
-die() { echo "codex-run: $1" >&2; exit 2; }
+die() { echo "worker-codex: $1" >&2; exit 2; }
 LOG_SETUP_WARN=0
 LOG_SETUP_MSG=""
 LOG_SETUP_RC=3
 log_setup_warning() {
   LOG_SETUP_WARN=1
   if [ -n "$LOG_SETUP_MSG" ]; then LOG_SETUP_MSG="$LOG_SETUP_MSG; $1"; else LOG_SETUP_MSG="$1"; fi
-  echo "codex-run: 경고: $1" >&2
+  echo "worker-codex: 경고: $1" >&2
 }
 log_setup_chmod() { # $1=mode, $2=path, $3=label; permission failure is warning-only
   CHMOD_OUTPUT=""
@@ -122,7 +122,7 @@ while [ $# -gt 0 ]; do
     --account)   [ $# -ge 2 ] || die "--account requires a value"; ACCOUNT_EXPLICIT=1; ACCOUNT_ARG="$2"; SEEN_ACCOUNT=1; shift 2 ;;
     --account=*) ACCOUNT_EXPLICIT=1; ACCOUNT_ARG="${1#*=}"; validate_account "--account" "$ACCOUNT_ARG"; SEEN_ACCOUNT=1; shift ;;
     --help)      usage; exit 0 ;;
-    --version)   echo "codex-run $VERSION"; exit 0 ;;
+    --version)   echo "worker-codex $VERSION"; exit 0 ;;
     --)          shift; WRAPPER_PARSE_STOPPED=1; break ;;
     # 단독 "-"는 옵션이 아니라 "표준입력에서 읽어라"라는 codex 쪽 인자다.
     # -* 에 먼저 걸려 죽으면 `--stdin <파일> ... -` 관용구가 통째로 막힌다.
@@ -133,9 +133,9 @@ while [ $# -gt 0 ]; do
 done
 
 lift_notice() { # $1=flag, $2=whether the same flag appeared before the codex arguments
-  echo "[codex-run] 안내: '$1' 래퍼 플래그는 exec 앞에 오는 것이 정석입니다. 위치를 자동 교정했습니다." >&2
+  echo "[worker-codex] 안내: '$1' 래퍼 플래그는 exec 앞에 오는 것이 정석입니다. 위치를 자동 교정했습니다." >&2
   if [ "$2" = "1" ]; then
-    echo "[codex-run] 안내: '$1' 래퍼 플래그가 exec 앞뒤에 모두 지정되어 뒤의 값을 사용합니다." >&2
+    echo "[worker-codex] 안내: '$1' 래퍼 플래그가 exec 앞뒤에 모두 지정되어 뒤의 값을 사용합니다." >&2
   fi
 }
 
@@ -207,7 +207,7 @@ fi
 validate_num "--timeout/CODEX_RUN_TIMEOUT" "$LIMIT" 1
 validate_num "--stall/CODEX_RUN_STALL" "$STALL" 0
 validate_num "--tail/CODEX_RUN_TAIL" "$TAIL_LINES" 0
-[ $# -gt 0 ] || die "no arguments. See codex-run --help"
+[ $# -gt 0 ] || die "no arguments. See worker-codex --help"
 
 if [ "$ACCOUNT_EXPLICIT" = "1" ]; then
   validate_account "--account" "$ACCOUNT_ARG"
@@ -473,15 +473,15 @@ def load_state():
     except FileNotFoundError:
         return {}
     except (ValueError, TypeError) as exc:
-        print("codex-run: 경고: 계정 상태 JSON이 손상되어 기본값으로 복구합니다: %s" % exc,
+        print("worker-codex: 경고: 계정 상태 JSON이 손상되어 기본값으로 복구합니다: %s" % exc,
               file=sys.stderr)
         return {}
     except OSError as exc:
-        print("codex-run: 경고: 계정 상태파일을 읽지 못해 기본값으로 복구합니다: %s" % exc,
+        print("worker-codex: 경고: 계정 상태파일을 읽지 못해 기본값으로 복구합니다: %s" % exc,
               file=sys.stderr)
         return {}
     if not isinstance(value, dict):
-        print("codex-run: 경고: 계정 상태 JSON이 객체가 아니어서 기본값으로 복구합니다",
+        print("worker-codex: 경고: 계정 상태 JSON이 객체가 아니어서 기본값으로 복구합니다",
               file=sys.stderr)
         return {}
     return value
@@ -618,7 +618,7 @@ def acquire_state_lock(wait_sec=2.0):
             os.close(fd)
         except (OSError, UnboundLocalError):
             pass
-        print("codex-run: 경고: 계정 상태파일 락을 얻지 못해 안전하게 진행할 수 없습니다: %s" % exc,
+        print("worker-codex: 경고: 계정 상태파일 락을 얻지 못해 안전하게 진행할 수 없습니다: %s" % exc,
               file=sys.stderr)
         sys.exit(2)
 
@@ -626,7 +626,7 @@ def save_state(value):
     try:
         atomic_state(value)
     except OSError as exc:
-        print("codex-run: 경고: 계정 상태파일을 기록하지 못했습니다: %s" % exc,
+        print("worker-codex: 경고: 계정 상태파일을 기록하지 못했습니다: %s" % exc,
               file=sys.stderr)
 
 def finish(value, selected_account, snapshot):
@@ -649,7 +649,7 @@ def release_state_lock(fd):
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
     except OSError as exc:
-        print("codex-run: 경고: 계정 상태파일 락 해제 실패: %s" % exc, file=sys.stderr)
+        print("worker-codex: 경고: 계정 상태파일 락 해제 실패: %s" % exc, file=sys.stderr)
 
 def atomic_state(value):
     STATE.parent.mkdir(parents=True, exist_ok=True)
@@ -681,7 +681,7 @@ try:
     data = both()
     if (FALLBACK_QUOTA and
             not any((item or {}).get("pct") is not None for item in data.values())):
-        print("codex-run: 오류: 내장 quota 폴백에서 GPT 스냅샷을 찾지 못했습니다. "
+        print("worker-codex: 오류: 내장 quota 폴백에서 GPT 스냅샷을 찾지 못했습니다. "
               "확인한 파일 패턴: %s. 각 계정에서 Codex CLI를 한 번 실행해 스냅샷을 만든 "
               "뒤 다시 실행하십시오." % ", ".join(FALLBACK_SNAPSHOT_PATTERNS),
               file=sys.stderr)
@@ -705,7 +705,7 @@ try:
         candidate = None
 
     if selected is None and candidate is None:
-        print("codex-run: 경고: 안전하게 선택할 GPT 계정이 없습니다", file=sys.stderr)
+        print("worker-codex: 경고: 안전하게 선택할 GPT 계정이 없습니다", file=sys.stderr)
         sys.exit(2)
 
     probes = state.get("probes") if isinstance(state.get("probes"), dict) else {}
@@ -736,7 +736,7 @@ try:
     if needs_probe and failure_cooling:
         selected = choose(data, state, now, {candidate})
         if selected is None:
-            print("codex-run: 경고: 프로브 백오프 중인 계정을 제외하면 안전 후보가 없습니다",
+            print("worker-codex: 경고: 프로브 백오프 중인 계정을 제외하면 안전 후보가 없습니다",
                   file=sys.stderr)
             sys.exit(2)
         finish(state, selected, data)
@@ -745,7 +745,7 @@ try:
     # 다른 프로세스가 갱신 중이면 현재의 신선한 안전 후보만 쓴다.
     if needs_probe and reservation_cooling:
         if selected is None:
-            print("codex-run: 경고: 판정 불가 계정의 프로브가 이미 진행 중이며 안전 후보가 없습니다",
+            print("worker-codex: 경고: 판정 불가 계정의 프로브가 이미 진행 중이며 안전 후보가 없습니다",
                   file=sys.stderr)
             sys.exit(2)
         finish(state, selected, data)
@@ -759,7 +759,7 @@ try:
         save_state(state)
     else:
         if selected is None:
-            print("codex-run: 경고: 판정 불가 계정을 갱신하지 못했고 안전 후보가 없습니다",
+            print("worker-codex: 경고: 판정 불가 계정을 갱신하지 못했고 안전 후보가 없습니다",
                   file=sys.stderr)
             sys.exit(2)
         finish(state, selected, data)
@@ -784,7 +784,7 @@ if probe_bin is None:
         save_state(state)
     finally:
         release_state_lock(lock_fd)
-    print("codex-run: 경고: 프로브에 필요한 codex 실행 파일을 찾지 못했습니다", file=sys.stderr)
+    print("worker-codex: 경고: 프로브에 필요한 codex 실행 파일을 찾지 못했습니다", file=sys.stderr)
     sys.exit(2)
 env = os.environ.copy()
 env["CODEX_HOME"] = HOMES[probe_candidate]
@@ -825,7 +825,7 @@ if not probe_succeeded:
         reason = "exit=%s" % probe_rc
     else:
         reason = "exit=0, snapshot unchanged"
-    print("codex-run: 경고: %s 계정 프로브 실패(%s)" % (probe_candidate, reason),
+    print("worker-codex: 경고: %s 계정 프로브 실패(%s)" % (probe_candidate, reason),
           file=sys.stderr)
 
 # 프로브 중 다른 호출이 기록한 계정 상태를 잃지 않도록 최신 상태에 결과를 병합한다.
@@ -863,7 +863,7 @@ try:
     selected = choose(refreshed, state, time.time(), excluded)
     if selected is None:
         save_state(state)
-        print("codex-run: 경고: 프로브 실패 계정을 제외하면 안전 후보가 없습니다",
+        print("worker-codex: 경고: 프로브 실패 계정을 제외하면 안전 후보가 없습니다",
               file=sys.stderr)
         sys.exit(2)
     finish(state, selected, refreshed)
@@ -900,14 +900,14 @@ if [ "$SELECTED_ACCOUNT" = "biz" ]; then LOGDIR="$HOME/.codex-runs-biz"; else LO
 MKDIR_OUTPUT=""
 if ! MKDIR_OUTPUT="$(umask 077; mkdir -p "$LOGDIR" 2>&1)"; then
   if [ -n "$MKDIR_OUTPUT" ]; then
-    echo "codex-run: cannot prepare log directory: $LOGDIR ($MKDIR_OUTPUT); no child started (exit $LOG_SETUP_RC)" >&2
+    echo "worker-codex: cannot prepare log directory: $LOGDIR ($MKDIR_OUTPUT); no child started (exit $LOG_SETUP_RC)" >&2
   else
-    echo "codex-run: cannot prepare log directory: $LOGDIR; no child started (exit $LOG_SETUP_RC)" >&2
+    echo "worker-codex: cannot prepare log directory: $LOGDIR; no child started (exit $LOG_SETUP_RC)" >&2
   fi
   exit "$LOG_SETUP_RC"
 fi
 if [ ! -d "$LOGDIR" ] || [ -L "$LOGDIR" ] || [ ! -r "$LOGDIR" ] || [ ! -x "$LOGDIR" ] || [ ! -w "$LOGDIR" ]; then
-  echo "codex-run: cannot use log directory: $LOGDIR; no child started (exit $LOG_SETUP_RC)" >&2
+  echo "worker-codex: cannot use log directory: $LOGDIR; no child started (exit $LOG_SETUP_RC)" >&2
   exit "$LOG_SETUP_RC"
 fi
 log_setup_chmod 700 "$LOGDIR" "log directory"
@@ -931,12 +931,12 @@ while [ "$LOG_SEQ" -le 99 ]; do
   LOG="$LOG_BASE-$LOG_SEQ.log"
 done
 if [ "$LOG_CREATED" != "1" ]; then
-  echo "codex-run: cannot create a private log file in $LOGDIR; no child started (exit $LOG_SETUP_RC)" >&2
+  echo "worker-codex: cannot create a private log file in $LOGDIR; no child started (exit $LOG_SETUP_RC)" >&2
   exit "$LOG_SETUP_RC"
 fi
 log_setup_chmod 600 "$LOG" "log file"
 if [ ! -f "$LOG" ] || [ -L "$LOG" ]; then
-  echo "codex-run: log path is not a regular file: $LOG; no child started (exit $LOG_SETUP_RC)" >&2
+  echo "worker-codex: log path is not a regular file: $LOG; no child started (exit $LOG_SETUP_RC)" >&2
   exit "$LOG_SETUP_RC"
 fi
 
@@ -977,12 +977,12 @@ trap 'cleanup; exit 143' INT TERM HUP
 START=$SECONDS
 HEADER_OK=1
 {
-  echo "# codex-run start: $(date '+%Y-%m-%d %H:%M:%S') / timeout ${LIMIT}s / stall ${STALL}s / stdin ${STDIN_FILE}"
+  echo "# worker-codex start: $(date '+%Y-%m-%d %H:%M:%S') / timeout ${LIMIT}s / stall ${STALL}s / stdin ${STDIN_FILE}"
   echo "# command: $CODEX_BIN $*"
   echo "#---"
 } >> "$LOG" || HEADER_OK=0
 if [ "$HEADER_OK" != "1" ]; then
-  echo "codex-run: cannot write log file: $LOG; no child started (exit $LOG_SETUP_RC)" >&2
+  echo "worker-codex: cannot write log file: $LOG; no child started (exit $LOG_SETUP_RC)" >&2
   exit "$LOG_SETUP_RC"
 fi
 
@@ -1047,7 +1047,7 @@ kill -0 -"$CPID" 2>/dev/null && LEFT=1
 TOTAL_ELAPSED=$(( SECONDS - START ))
 echo "----- codex output (last ${TAIL_LINES} lines) -----"
 tail -n "$TAIL_LINES" "$LOG"
-echo "----- codex-run summary -----"
+echo "----- worker-codex summary -----"
 case "$REASON" in
   ok)
     if [ "$LOG_SETUP_WARN" = "1" ]; then
@@ -1066,8 +1066,8 @@ echo "decision at: ${DECISION_ELAPSED}s / total elapsed: ${TOTAL_ELAPSED}s / ful
 STATUS="$REASON"
 [ "$REASON" = "ok" ] && [ "$RC" != "0" ] && STATUS="failed"
 if [ "$LOG_SETUP_WARN" = "1" ]; then
-  echo "codex-run: status=$STATUS exit_code=$RC elapsed_sec=$TOTAL_ELAPSED log=$LOG account=$SELECTED_ACCOUNT route=$ROUTE_REASON probe=$PROBE_SEC wrapper_warning=log_setup codex_exit_code=${CODEX_RC:-n/a}"
+  echo "worker-codex: status=$STATUS exit_code=$RC elapsed_sec=$TOTAL_ELAPSED log=$LOG account=$SELECTED_ACCOUNT route=$ROUTE_REASON probe=$PROBE_SEC wrapper_warning=log_setup codex_exit_code=${CODEX_RC:-n/a}"
 else
-  echo "codex-run: status=$STATUS exit_code=$RC elapsed_sec=$TOTAL_ELAPSED log=$LOG account=$SELECTED_ACCOUNT route=$ROUTE_REASON probe=$PROBE_SEC"
+  echo "worker-codex: status=$STATUS exit_code=$RC elapsed_sec=$TOTAL_ELAPSED log=$LOG account=$SELECTED_ACCOUNT route=$ROUTE_REASON probe=$PROBE_SEC"
 fi
 exit "$RC"

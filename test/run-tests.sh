@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Self-test harness for codex-run, using fake codex binaries to reproduce each scenario.
-# Usage: test/run-tests.sh [path to codex-run]   (default: ./codex-run at the repository root)
+# Self-test harness for worker-codex, using fake codex binaries to reproduce each scenario.
+# Usage: test/run-tests.sh [path to worker-codex]   (default: ./worker-codex at the repository root)
 # Exit codes: 0=all passed / 1=one or more failures
 # The real codex is never called, so this consumes no API quota or credits.
 set -u
 
-CR="${1:-$(cd "$(dirname "$0")/.." && pwd)/codex-run}"
+CR="${1:-$(cd "$(dirname "$0")/.." && pwd)/worker-codex}"
 # Tests run from a temporary directory, so the wrapper path must be made absolute.
 # Otherwise every run dies with 127 after cd, while process-cleanup checks falsely pass because nothing started.
 case "$CR" in
   /*) ;;
   *)  CR="$(cd "$(dirname "$CR")" && pwd)/$(basename "$CR")" ;;
 esac
-[ -x "$CR" ] || { echo "codex-run not found or not executable: $CR"; exit 2; }
+[ -x "$CR" ] || { echo "worker-codex not found or not executable: $CR"; exit 2; }
 
 TD="$(mktemp -d)"
 # Use a unique marker to count only processes started by this test run.
@@ -58,7 +58,7 @@ exit 0
 EOF
 chmod +x ./*.sh
 
-echo "codex-run tests: $CR"
+echo "worker-codex tests: $CR"
 echo "bash: $BASH_VERSION"
 
 # --- Basic behavior ---
@@ -129,23 +129,23 @@ CLEAN_BIN="$TD/clean-bin"
 CLEAN_INSTALL="$CLEAN_HOME/.local/bin"
 CLEAN_PYTHONPATH="$TD/clean-pythonpath"
 mkdir -p "$CLEAN_INSTALL" "$CLEAN_BIN" "$CLEAN_PYTHONPATH"
-cp "$CR" "$CLEAN_INSTALL/codex-run"
+cp "$CR" "$CLEAN_INSTALL/worker-codex"
 cat > "$CLEAN_BIN/codex" <<'EOF'
 #!/bin/bash
 printf 'stub-called\n' >> "$HOME/stub-called"
 exit 0
 EOF
-chmod +x "$CLEAN_INSTALL/codex-run" "$CLEAN_BIN/codex"
+chmod +x "$CLEAN_INSTALL/worker-codex" "$CLEAN_BIN/codex"
 CLEAN_OUT="$(env -u CODEX_HOME -u CODEX_ACCOUNT -u CODEX_BIN \
   -u CODEX_RUN_TIMEOUT -u CODEX_RUN_STALL -u CODEX_RUN_TAIL \
   HOME="$CLEAN_HOME" PATH="$CLEAN_BIN:/usr/bin:/bin" PYTHONPATH="$CLEAN_PYTHONPATH" \
-  "$CLEAN_INSTALL/codex-run" --timeout 10 exec --sandbox read-only clean-home 2>&1)"
+  "$CLEAN_INSTALL/worker-codex" --timeout 10 exec --sandbox read-only clean-home 2>&1)"
 CLEAN_RC=$?
 printf '  clean HOME output:\n%s\n' "$CLEAN_OUT"
 R=1
 if [ "$CLEAN_RC" -eq 2 ]; then
   case "$CLEAN_OUT" in
-    *"codex-run: 오류: 내장 quota 폴백에서 GPT 스냅샷을 찾지 못했습니다."*"Codex CLI"*)
+    *"worker-codex: 오류: 내장 quota 폴백에서 GPT 스냅샷을 찾지 못했습니다."*"Codex CLI"*)
       case "$CLEAN_OUT" in
         *ImportError*|*Traceback*) ;;
         *) R=0 ;;
@@ -167,7 +167,7 @@ check "bare exec with empty arg array" 0 $?
 "$CR" --help >/dev/null 2>&1
 check "--help rc=0" 0 $?
 # Pin the shape, not the number - the version bumps and the test should not have to follow.
-"$CR" --version 2>/dev/null | grep -qE "^codex-run [0-9]+\.[0-9]+\.[0-9]+$"
+"$CR" --version 2>/dev/null | grep -qE "^worker-codex [0-9]+\.[0-9]+\.[0-9]+$"
 check "--version string" 0 $?
 
 # --- stdin delivery ---
