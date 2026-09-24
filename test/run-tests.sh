@@ -21,6 +21,9 @@ MARK="codexrun-test-$$"
 cleanup_all() { pkill -KILL -f "$MARK" 2>/dev/null; rm -rf "$TD"; }
 trap cleanup_all EXIT
 cd "$TD" || exit 2
+# Most scenarios exercise the wrapper, not quota-based account selection. CI
+# has no Codex usage snapshots, so select the personal account explicitly.
+export CODEX_ACCOUNT=personal
 
 PASS=0; FAIL=0
 check() {  # check <name> <expected> <actual>
